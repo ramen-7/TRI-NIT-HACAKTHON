@@ -1,6 +1,16 @@
 import pandas as pd
 import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
 import streamlit as st
+import xgboost
+import sklearn
+import warnings
+import matplotlib.pyplot as plt
+import seaborn as sns
+import pickle
+warnings.simplefilter(action='ignore', category=FutureWarning)
+warnings.simplefilter(action='ignore', category=UserWarning)
 
 df=pd.read_excel("crop_data_dict.xlsx")
 
@@ -33,15 +43,52 @@ for name in District_Names:
     Seasons[name]=filter['Season'].unique()
 
 Crop= []
-# for name in District_Names:
-#     for name2 in seasons_unique:
-#         filter=df[(df['District_Name']== name) & (df['Season']== name2)]
-#         Crop=filter['Crop'].unique()
+def insect_classification(insect):
+    if insect == 'Low':
+        return 0
+    elif insect == 'Average':
+        return 1
+    elif insect == 'High':
+        return 2
+    elif insect == 'Very High':
+        return 3
+
         
-def page_1():
-    st.write("This is page 1")
-    st.write("This is a sample text in page 1")
-# Saara python ka code yaha daal de
+def Predict_Damage_to_Crops():
+    warnings.simplefilter(action='ignore', category=FutureWarning)
+    warnings.simplefilter(action='ignore', category=UserWarning)
+    st.title("Predict Damage to Crops")
+    insects = st.selectbox("Insects in field (Estimate)", ("Low", "Average", "High", "Very High"))
+    crop_type = st.selectbox("Crop Type", ("Kharif", "Rabi"))
+    soil_type = st.selectbox("Soil Type", ("Alluvial", "Black-Cotton"))
+    season = st.selectbox("Season", ('Winter', 'Monsoon', 'Summer'))
+    pesticide_use_category = st.selectbox("Pesticide Category", ('Herbicides', 'Bactericides', 'Insecticides'))
+    number_of_doses_in_a_week = st.number_input("Number of Doses in a Week", min_value=0, max_value=100, value=0)
+    number_of_weeks_used = st.number_input("Number of Weeks Used", min_value=0, max_value=52, value=0)
+
+    
+    insects_label = insect_classification(insects)
+    inp = pd.DataFrame(
+        {'Crop_Type': [crop_type], 'Soil_Type': [soil_type], 'Pesticide_Use_Category': [pesticide_use_category],
+         'Number_Doses_Week': [number_of_doses_in_a_week], 'Number_Weeks_Used': [number_of_weeks_used],
+         'Season': [season], 'Insects_Labeled': [insects_label]})
+    
+    transformer = pickle.load(open("transformer_reg.pkl", "rb"))
+    inp_transformed = transformer.transform(inp)
+    inp_transformed_encoded = pd.DataFrame(inp_transformed, columns=transformer.get_feature_names_out())
+    xgb = pickle.load(open("xgb_reg.pkl", "rb"))
+    
+    print(inp)
+    if st.button("Predict"):
+        output = xgb.predict(inp_transformed_encoded) 
+        # print(output)
+        output = output[0]
+        if output == 'Minimal Damage':
+            st.success(output)
+        elif output == 'Partial Damage':
+            st.warning(output, icon="⚠️")
+        elif output == 'Significant Damage':
+            st.warning(output, icon='💀')
     
 def page_2():
     st.title("Get Produce for you field")
@@ -70,18 +117,44 @@ def page_2():
             st.markdown("<span style='color:green; font-size:20px;' >Amazing</span>", unsafe_allow_html=True)
         
         final="The amount of produce in your field is {} tonnes".format(produce)
-        st.markdown("<h1 style='font-size:20px;'>{}</h1>".format(final), unsafe_allow_html=True)     
+        st.markdown("<h1 style='font-size:20px;'>{}</h1>".format(final), unsafe_allow_html=True)    
+        
+        
+def Crop_recommendation():
+    warnings.simplefilter(action='ignore', category=FutureWarning)
+    warnings.simplefilter(action='ignore', category=UserWarning)
+    df=pd.read_csv('Crop_recommendation.csv')
+    st.title("Predict What Type of Crop is Best for your Soil")
+    N = st.number_input("Nitrogen (Ratio in Soil)", min_value=0, max_value=100, value=0)
+    P = st.number_input("Phosphorus (Ratio in Soil)", min_value=0, max_value=100, value=0)
+    K = st.number_input("Potassium (Ratio in Soil)", min_value=0, max_value=100, value=0)
+    T = st.number_input("Temperature in (Celsius)", min_value=0, max_value=45, value=0, format="%.2f")
+    H = st.number_input("Humidity (%)", min_value=0, max_value=100, value=0, format="%.2f")
+    ph = st.number_input("ph Level", min_value=0, max_value=10, value=0, format="%.2f")
+    rainfall = st.number_input("Rainfall (in mm)", min_value=0, max_value=300, value=0, format="%.2f")
+    model= pickle.load(open("soil_details_crop_classifier.pkl", "rb"))
+    
+    c=df.label.astype('category')
+    targets = dict(enumerate(c.cat.categories))
+    
+    inp = pd.DataFrame({'N': [N], 'P': [P], 'K': [K], 'temperature': [T], 'humidity': [H], 'ph': [ph], 'rainfall': [rainfall]})
+    if st.button("Predict"):
+        model.predict(inp)
+        output = model.predict(inp)  
+        st.write(f"Output: {targets[output[0]]}") 
 
 def main():
     st.sidebar.title("Navigation")
-    page = st.sidebar.selectbox("Select a Tool", ["Page 1", "Crop Production"])
+    page = st.sidebar.selectbox("Select a Tool", ["Predict Damage to Crops", "Crop Production","Crop recommendation"])
     
-    st.write("NAME OF OUR FARMER PROJECT")
+    st.write("TEAM TIET")
     
-    if page == "Page 1":
-        page_1()
+    if page == "Predict Damage to Crops":
+        Predict_Damage_to_Crops()
     elif page == "Crop Production":
         page_2()
+    elif page == "Crop recommendation":
+        Crop_recommendation()
     
 
 if __name__ == '__main__':
